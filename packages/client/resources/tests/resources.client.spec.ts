@@ -104,6 +104,16 @@ describe('protocolOf', () => {
     expect(protocolOf('/a/b.txt')).toBeUndefined()
     expect(protocolOf('')).toBeUndefined()
   })
+
+  it('reads the host without relying on WHATWG URL host parsing for a non-special scheme', () => {
+    // Whether `new URL(address).hostname` assigns a host to a non-special
+    // scheme's authority is engine- and version-dependent (Chrome/Edge < 126
+    // parse an empty hostname for the same address a current engine parses
+    // correctly). A Windows drive-letter path is exactly the shape reported
+    // as broken on affected engines, since the colon after the drive letter
+    // makes the authority ambiguous for a parser that treats it as opaque.
+    expect(protocolOf('dsh-resource://file/session/x/C:/a.txt')).toBe('file')
+  })
 })
 
 describe('ResourceRegistry providers', () => {

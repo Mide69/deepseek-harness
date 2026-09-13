@@ -45,26 +45,34 @@ interface ResourceRecord {
  */
 export const RESOURCE_SCHEME = 'dsh-resource'
 
+const RESOURCE_AUTHORITY_PREFIX = `${RESOURCE_SCHEME}://`
+
 /**
- * The protocol key of one address: the host of a `dsh-resource://` URL, as the
- * URL parser reads it (lower-cased). Any other string — another scheme, or one
- * the URL parser rejects — names no protocol and is treated like an address
- * whose protocol has no provider.
+ * The protocol key of one address: the host segment of a `dsh-resource://`
+ * address (lower-cased). Any other string — another scheme, or one with no
+ * `dsh-resource://` authority — names no protocol and is treated like an
+ * address whose protocol has no provider.
+ *
+ * Reads the authority directly from the address string rather than through
+ * `new URL(address).hostname`: whether the WHATWG URL parser assigns a host
+ * to a non-special scheme's authority is itself version-dependent (host
+ * parsing for non-special schemes shipped in Chrome/Edge 126), so the same
+ * address parses to a real hostname on a current engine and to an empty one
+ * on an older Chromium, silently disabling every resource address parsed on
+ * that engine.
  * @param address - the full address.
  * @returns the protocol key, or `undefined` when the address is not a resource address.
  */
 export function protocolOf(address: string): string | undefined {
-  let parsed: URL
-  try {
-    parsed = new URL(address)
-  } catch {
-    // The URL parser rejects strings without a scheme (`/a/b.txt`, `''`);
-    // nothing else throws here, and an unparseable address is simply not ours.
+  // The URL parser always lower-cases a scheme before comparing it; matching
+  // case-insensitively here keeps that behavior without invoking the parser.
+  if (address.slice(0, RESOURCE_AUTHORITY_PREFIX.length).toLowerCase() !== RESOURCE_AUTHORITY_PREFIX) {
     return undefined
   }
-  if (parsed.protocol !== `${RESOURCE_SCHEME}:`) return undefined
-  // A non-special scheme's host is opaque to the URL parser and keeps its case.
-  return parsed.hostname === '' ? undefined : parsed.hostname.toLowerCase()
+  const authority = address.slice(RESOURCE_AUTHORITY_PREFIX.length)
+  const hostEnd = authority.search(/[/?#]/)
+  const host = hostEnd === -1 ? authority : authority.slice(0, hostEnd)
+  return host === '' ? undefined : host.toLowerCase()
 }
 
 function idle(status: 'none' | 'loading'): ResourceSnapshot<unknown> {
