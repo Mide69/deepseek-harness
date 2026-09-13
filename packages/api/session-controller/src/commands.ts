@@ -242,6 +242,14 @@ export class SessionCommandController {
     }
     let cut = SessionLogOffset(boundary.seq + 1)
     while (cut < source.events.length && source.events[cut]?.type !== 'turn/start') {
+      // agent/inbox/spliced with a non-empty `inserted` queues a message for
+      // a turn that has not started: the parent's next submission, not
+      // history of the completed one. Stop the scan here so the child never
+      // inherits pending work it did not itself receive. Housekeeping events
+      // between turns (request/header, session/title, ...) still carry
+      // forward, matching the scan's purpose for every other event type.
+      const event = source.events[cut]
+      if (event?.type === 'agent/inbox/spliced' && event.data.inserted.length > 0) break
       cut = SessionLogOffset(cut + 1)
     }
     let workspace: Workspace | undefined

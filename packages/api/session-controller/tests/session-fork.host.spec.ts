@@ -255,6 +255,34 @@ describe('sessions.fork', () => {
     await ctx.fiber.dispose()
   })
 
+  it('excludes a queued next-turn prompt spliced in after the cut boundary', async () => {
+    // Reproduces the parent's next submission landing between the anchored
+    // turn/end and the following turn/start: agent-loop's inbox projection
+    // (packages/core/agent-loop/src/inbox.ts) records that submission as an
+    // agent/inbox/spliced event before the next turn opens. The cut must stop
+    // at the completed-turn boundary and never carry that queued input into
+    // the child, or the child starts with the parent's next task pre-loaded.
+    const ctx = await composed()
+    const source = liveAgent(ctx, 'session-queued', 1)
+    const queued = createUserMessage({
+      content: [{ type: 'text', text: 'next task, still queued on the parent' }],
+      source: { kind: 'user' },
+    })
+    source.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [queued] })
+    source.append('turn/start', { turn: 2 })
+
+    const response = await remote(ctx).fork(request({ sessionId: source.id }))
+
+    expect(response.ok).toBe(true)
+    if (!response.ok) return
+    const childEvents = ctx.sessions.get(response.value.sessionId)?.snapshotEvents() ?? []
+    expect(childEvents.map(event => event.type)).toEqual([
+      'turn/start', 'user/message', 'turn/end', 'session/end-seed',
+    ])
+    expect(childEvents.some(event => event.type === 'agent/inbox/spliced')).toBe(false)
+    await ctx.fiber.dispose()
+  })
+
   it('rejects an in-log anchor whose turn is still open', async () => {
     const ctx = await composed()
     const source = liveAgent(ctx, 'session-open', 1, 'open')
