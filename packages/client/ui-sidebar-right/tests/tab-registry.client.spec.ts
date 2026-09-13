@@ -49,6 +49,17 @@ describe('SidebarRightTabRegistry — recognition', () => {
     expect(ranked(registry, 'dsh-resource://file/session/s/shot.png.txt')).toEqual([])
   })
 
+  it('matches the URI path without depending on WHATWG URL host parsing for a non-special scheme', () => {
+    // Whether `new URL(address).pathname` excludes a non-special scheme's
+    // authority is engine- and version-dependent (Chromium's host parsing for
+    // non-special schemes shipped mid-2026), so a Windows drive-letter path,
+    // exactly the shape reported as unmatched on affected engines, must still
+    // resolve to the path alone.
+    const registry = new SidebarRightTabRegistry(new Context())
+    registry.register(typeFor('text', ['*.txt']))
+    expect(registry.claim('dsh-resource://file/session/x/C:/notes.txt').kind).toBe('text')
+  })
+
   it('matches no path pattern for an address that is not a URI', () => {
     const registry = new SidebarRightTabRegistry(new Context())
     registry.register(typeFor('image', ['*.png']))

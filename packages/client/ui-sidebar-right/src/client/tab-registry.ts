@@ -182,18 +182,25 @@ interface Ranked {
 }
 
 /**
+ * Scheme (RFC 3986) plus the `://` authority separator, and every character
+ * of the authority up to the first path/query/fragment delimiter.
+ */
+const SCHEME_AND_AUTHORITY = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i
+
+/**
  * The address's URI path: what a pattern with no scheme separator matches
  * against. `dsh-resource://file/session/s1/home/me/b.md` gives `/session/s1/home/me/b.md`;
  * `sidebar://guide` gives `''`; an address that is not a URI gives nothing.
+ *
+ * Matches the scheme and authority directly rather than through
+ * `new URL(address).pathname`: whether the WHATWG URL parser assigns a host
+ * to a non-special scheme's authority (and so excludes it from `pathname`) is
+ * itself version-dependent, so the same `dsh-resource://` address can report
+ * a different path on different engines.
  */
 function pathOf(address: string): string | undefined {
-  try {
-    return new URL(address).pathname
-  } catch {
-    // The only thrower is the URL parser rejecting a non-URI address, which by
-    // the rule above matches no path pattern.
-    return undefined
-  }
+  const match = SCHEME_AND_AUTHORITY.exec(address)
+  return match === null ? undefined : address.slice(match[0].length)
 }
 
 /** Compile one declared pattern into the test the router runs. */
