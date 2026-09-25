@@ -423,6 +423,31 @@ describe('Session', () => {
     }
   })
 
+  it('rejects the same event-specific malformed message shapes on append, not only on seed/load', () => {
+    // A plugin injecting a message at runtime goes through append(), not a
+    // seed or a persistence read; the append site must fail the same
+    // malformed shapes a seed rejects, since a bad event durably logged here
+    // is discovered only much later, when the session is next reopened.
+    const user = {
+      id: 'user', role: 'user', content: [{ type: 'text', text: 'content' }], source: { kind: 'user' },
+    }
+    const invalid = [
+      { name: 'message record', data: null, message: 'lacks an identified message' },
+      { name: 'user role', data: { ...user, role: 'assistant' }, message: 'message must have role "user"' },
+      { name: 'source', data: { ...user, source: null }, message: 'message has invalid source' },
+      { name: 'content shape', data: { ...user, content: 'not-an-array' }, message: 'message has invalid content' },
+    ] as const
+
+    for (const { name, data, message } of invalid) {
+      const session = Session.create(SessionId(`append-invalid-${name}`))
+      expect(
+        () => session.append('user/message', data as never, { surfaceOp: 'append' }),
+        name,
+      ).toThrow(message)
+      expect(session.snapshotEvents(), name).toHaveLength(0)
+    }
+  })
+
   it('snapshots message events without validating plugin-owned block details', () => {
     const boundary = snapshotSessionEvent({
       type: 'turn/start',
@@ -663,7 +688,10 @@ describe('Session', () => {
 
   it('accepts dense arrays and nested plain objects', () => {
     const session = Session.create(SessionId('s6'))
-    expect(() => session.append('user/message', { content: [{ type: 'text', text: 'x' }], source: { kind: 'user' }, extra: [1, 2, [3, { a: null, b: true }]] } as never, { surfaceOp: 'append' })).not.toThrow()
+    expect(() => session.append('user/message', {
+      id: 'u1', role: 'user', content: [{ type: 'text', text: 'x' }], source: { kind: 'user' },
+      extra: [1, 2, [3, { a: null, b: true }]],
+    } as never, { surfaceOp: 'append' })).not.toThrow()
     expect(session.snapshotEvents()).toHaveLength(1)
   })
 
@@ -1015,7 +1043,7 @@ describe('Session', () => {
       data: unknown,
       opts?: unknown,
     ) => SessionEvent
-    const data = { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }
+    const data = { id: 'u1', role: 'user', content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }
 
     expect(() => appendRaw('user/message', data, { surfaceOp: 'invalid' }))
       .toThrow(/invalid surfaceOp/)
