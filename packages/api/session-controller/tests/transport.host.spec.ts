@@ -747,12 +747,16 @@ describe('SessionHistoryController', () => {
     const { ctx, transport } = await setup()
     const session = ctx.sessions.create(SessionId('pagination'), { meta: { cwd: '/workspace' } })
     session.append('turn/start', { turn: 1 })
-    append(session, 'user/message', { content: [], source: { kind: 'user' } }, { surfaceOp: 'append' })
-    const firstReply = append(session, 'assistant/message', { turn: 1, step: 1, message: {} }, { surfaceOp: 'append' })
-    append(session, 'user/message', { content: [], source: { kind: 'user' } }, { surfaceOp: 'append' })
-    append(session, 'assistant/message', { turn: 1, step: 2, message: {} }, { surfaceOp: 'append' })
+    append(session, 'user/message', { id: 'u1', role: 'user', content: [], source: { kind: 'user' } }, { surfaceOp: 'append' })
+    const firstReply = append(session, 'assistant/message', {
+      turn: 1, step: 1, message: { id: 'a1', role: 'assistant', content: [], source: { kind: 'model', provider: 'mock', model: 'mock' } },
+    }, { surfaceOp: 'append' })
+    append(session, 'user/message', { id: 'u2', role: 'user', content: [], source: { kind: 'user' } }, { surfaceOp: 'append' })
+    append(session, 'assistant/message', {
+      turn: 1, step: 2, message: { id: 'a2', role: 'assistant', content: [], source: { kind: 'model', provider: 'mock', model: 'mock' } },
+    }, { surfaceOp: 'append' })
     const summary = append(session, 'fixture/summary', {})
-    const replacement = append(session, 'user/message', { content: [], source: { kind: 'plugin' } }, {
+    const replacement = append(session, 'user/message', { id: 'u3', role: 'user', content: [], source: { kind: 'plugin' } }, {
       surfaceOp: { op: 'replace', startSeq: SessionSeq(1), endSeq: SessionSeq(4) },
       sourceEventSeqs: [SessionSeq(1), firstReply.seq, SessionSeq(3), SessionSeq(4), summary.seq],
     })
@@ -773,7 +777,7 @@ describe('SessionHistoryController', () => {
     const { ctx, transport } = await setup()
     const session = ctx.sessions.create(SessionId('pagination-sources'), { meta: { cwd: '/workspace' } })
     const source = append(session, 'fixture/source', {})
-    append(session, 'user/message', { content: [], source: { kind: 'plugin' } }, {
+    append(session, 'user/message', { id: 'u1', role: 'user', content: [], source: { kind: 'plugin' } }, {
       surfaceOp: 'append', sourceEventSeqs: [source.seq],
     })
 
