@@ -94,7 +94,7 @@ kind: "package-reference"
 
 ### Matcher subject 与串行执行
 
-matcher subject 是工具名称（`PreToolUse`／`PostToolUse`）、会话源（`SessionStart`），或常量 `agent_type` `general-purpose`（`SubagentStart`／`SubagentStop`——subagent seam 不携带每 kind 标签）；`UserPromptSubmit` 与 `Stop` 忽略 matcher。匹配 hook 按配置顺序串行运行，这使每个 hook 的 `hook/invoked`／`hook/result` 对在日志中相邻，且最严格折叠与顺序无关（`deny > ask > allow`）。
+matcher subject 是工具名称（`PreToolUse`／`PostToolUse`）、会话源（`SessionStart`），或常量 `agent_type` `general-purpose`（`SubagentStart`／`SubagentStop`——subagent seam 不携带每 kind 标签）；`UserPromptSubmit` 与 `Stop` 忽略 matcher。对于本 harness 自带、且有已验证 Claude Code 对应关系的工具（目前仅 `bash` → `Bash`），matcher subject 与 payload 的 `tool_name` 字段都会带上 Claude Code 自己的名称，未经改动的 `.claude/settings.json` 因此能匹配到、也能读到它期望的名称；其余 harness 工具名称原样透传。匹配 hook 按配置顺序串行运行，这使每个 hook 的 `hook/invoked`／`hook/result` 对在日志中相邻，且最严格折叠与顺序无关（`deny > ask > allow`）。
 
 ### 脱离运行与释放
 
