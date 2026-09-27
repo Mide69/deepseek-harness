@@ -243,7 +243,7 @@ export function apply(ctx: Context, config: Config): void {
   // --- PreToolUse → PreToolDecision. Matcher subject is the tool name. ---
   ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
     const turn = lastTurn(ctx, exec.agent)
-    const merged = await runPoint('PreToolUse', exec.name, preToolPayload(exec), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
+    const merged = await runPoint('PreToolUse', claudeCodeToolName(exec.name), preToolPayload(exec), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
     if (merged.decision === 'deny') return { kind: 'deny', reason: merged.reason ?? 'blocked by PreToolUse hook' }
     if (merged.decision === 'ask') return { kind: 'ask', ...merged.reason !== undefined ? { reason: merged.reason } : {} }
     return next()
@@ -252,7 +252,7 @@ export function apply(ctx: Context, config: Config): void {
   // --- PostToolUse → PostToolDecision. Matcher subject is the tool name. ---
   ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
     const turn = lastTurn(ctx, exec.agent)
-    const merged = await runPoint('PostToolUse', exec.name, postToolPayload(exec, result), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
+    const merged = await runPoint('PostToolUse', claudeCodeToolName(exec.name), postToolPayload(exec, result), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
     const context = contextFrom(merged)
     if (merged.decision === 'deny') {
       return { kind: 'block', feedback: [{ type: 'text', text: merged.reason ?? 'blocked by PostToolUse hook' }], ...context ? { additionalContexts: [context] } : {} }
@@ -342,10 +342,28 @@ function promptPayload(agent: Agent, content: ContentBlock[]): Record<string, un
   return { ...base(agent, 'UserPromptSubmit'), prompt: blocksToText(content) }
 }
 function preToolPayload(exec: ToolExecution): Record<string, unknown> {
-  return { ...base(exec.agent, 'PreToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId }
+  return { ...base(exec.agent, 'PreToolUse'), tool_name: claudeCodeToolName(exec.name), tool_input: exec.arguments, tool_use_id: exec.callId }
 }
 function postToolPayload(exec: ToolExecution, result: ToolExecutionResult): Record<string, unknown> {
-  return { ...base(exec.agent, 'PostToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
+  return { ...base(exec.agent, 'PostToolUse'), tool_name: claudeCodeToolName(exec.name), tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
+}
+
+/**
+ * This harness's own tool name for a Claude Code tool it also ships, so an
+ * unmodified Claude Code hook config matches and reads the name it expects.
+ * `matchesMatcher`'s claude-code literal alternatives are an exact string
+ * compare: a hook `matcher`, and the `tool_name` field a hook script reads
+ * from stdin, written in Claude Code's own PascalCase convention (this bridge
+ * exists to run an unmodified `.claude/settings.json`) never matches this
+ * harness's own lowercase registry name without this translation. Only the
+ * one tool with a verified 1:1 equivalent is mapped here; every other
+ * harness tool name passes through unchanged, since guessing a Claude Code
+ * equivalent for a tool whose call interface has not been verified equal
+ * would misinform a hook script more than an unmapped name does.
+ */
+const CLAUDE_CODE_TOOL_NAMES: Readonly<Record<string, string>> = { bash: 'Bash' }
+function claudeCodeToolName(name: string): string {
+  return CLAUDE_CODE_TOOL_NAMES[name] ?? name
 }
 function stopPayload(agent: Agent): Record<string, unknown> {
   return { ...base(agent, 'Stop'), stop_hook_active: false }

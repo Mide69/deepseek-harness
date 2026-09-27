@@ -92,7 +92,7 @@ The bridge builds each event's stdin payload from a base of `session_id`, string
 
 ### Matcher subjects and serial execution
 
-The matcher subject is the tool name (`PreToolUse` / `PostToolUse`), the session source (`SessionStart`), or the constant `agent_type` `general-purpose` (`SubagentStart` / `SubagentStop` — the subagent seam carries no per-kind label); `UserPromptSubmit` and `Stop` ignore matchers. Matched hooks run serially in config order, which keeps each hook's `hook/invoked` / `hook/result` pair adjacent in the log, and the most-restrictive fold is order-independent (`deny > ask > allow`).
+The matcher subject is the tool name (`PreToolUse` / `PostToolUse`), the session source (`SessionStart`), or the constant `agent_type` `general-purpose` (`SubagentStart` / `SubagentStop` — the subagent seam carries no per-kind label); `UserPromptSubmit` and `Stop` ignore matchers. For a tool this harness ships with a verified Claude Code equivalent (currently only `bash` → `Bash`), the matcher subject and the payload's `tool_name` field both carry Claude Code's own name, so an unmodified `.claude/settings.json` matches and reads the name it expects; every other harness tool name passes through unchanged. Matched hooks run serially in config order, which keeps each hook's `hook/invoked` / `hook/result` pair adjacent in the log, and the most-restrictive fold is order-independent (`deny > ask > allow`).
 
 ### Detached runs and disposal
 

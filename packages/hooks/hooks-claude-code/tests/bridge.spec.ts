@@ -178,6 +178,31 @@ describe('hooks-claude-code bridge — PreToolUse', () => {
     const result = events(agent).find(e => e.type === 'tool/result')
     expect(result?.type === 'tool/result' && result.data.message.isError).toBe(false)
   })
+
+  it('a matcher written in Claude Code\'s own casing ("Bash") selects this harness\'s "bash" tool', async () => {
+    // An unmodified .claude/settings.json names tools the way Claude Code
+    // does (PascalCase); this harness registers its own bash tool as
+    // lowercase "bash". Without translating the matcher subject, a copied
+    // config's matcher: "Bash" would silently select nothing.
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-hooks-claude-'))
+    dirs.push(dir)
+    const deny = join(dir, 'deny.sh')
+    writeFileSync(deny, '#!/usr/bin/env bash\nexit 2\n')
+    chmodSync(deny, 0o755)
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: deny }] }] } }))
+
+    const adapter = new MockAdapter([toolCallResponse('c1', 'bash', {}), textResponse('done')])
+    const ctx = await harness(dir, adapter)
+    let ran = false
+    ctx.tools.register(defineContentToolFixture({ name: 'bash', description: 'b', parameters: {}, async execute() { ran = true; return [{ type: 'text', text: 'should not run' }] } }))
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'use bash' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    expect(ran).toBe(false)
+    const result = events(agent).find(e => e.type === 'tool/result')
+    expect(result?.type === 'tool/result' && result.data.message.isError).toBe(true)
+  })
 })
 
 describe('hooks-claude-code bridge — PostToolUse', () => {
