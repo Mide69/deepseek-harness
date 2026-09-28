@@ -264,6 +264,30 @@ describe('Session', () => {
     expect(Object.isFrozen(mismatchedMessage)).toBe(false)
   })
 
+  it('rejects the same malformed Assistant settlement fields on append, not only on seed/load', () => {
+    const session = Session.create(SessionId('invalid-appended-assistant-stream'))
+    // -0 is excluded here: append()'s lossless-JSON guard already rejects it
+    // (JSON.stringify(-0) === "0") before this settlement check ever runs;
+    // that case is exercised on the seed/load side, which accepts hand-built
+    // JS objects that never passed through a JSON round trip.
+    for (const data of [
+      { turn: '1', step: 1, stream: [] },
+      { turn: -1, step: 1, stream: [] },
+      { turn: 1.5, step: 1, stream: [] },
+      { turn: 1, step: '1', stream: [] },
+      { turn: 1, step: -1, stream: [] },
+      { turn: 1, step: 1.5, stream: [] },
+      { turn: 1, step: 1, stream: null },
+    ]) {
+      expect(() => session.append('assistant/attempt', data as never))
+        .toThrow(/has invalid settlement fields/)
+      expect(() => session.append('assistant/message', data as never, { surfaceOp: 'append' }))
+        .toThrow(/has invalid settlement fields/)
+    }
+    // None of the rejected appends entered the log.
+    expect(session.snapshotEvents()).toHaveLength(0)
+  })
+
   it('rejects historical or malformed request-header lifecycle markers on seed/load', () => {
     const base = {
       type: 'request/header', seq: SessionSeq(0), time: 1,
