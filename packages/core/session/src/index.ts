@@ -272,28 +272,27 @@ function assertCurrentLlmShape(event: Record<string, unknown>, index: number): v
   }
   const type = event['type']
   if (type === 'assistant/attempt') {
-    assertAssistantSettlementShape(record, type, index)
+    assertAssistantSettlementShape(record, `seed ${type} at index ${index}`)
     return
   }
   if (!isMessageEventType(type)) return
   assertMessageEventShape(event, `seed ${type} at index ${index}`)
   if (type === 'assistant/message') {
-    assertAssistantSettlementShape(record, type, index)
+    assertAssistantSettlementShape(record, `seed ${type} at index ${index}`)
   }
 }
 
 /** Validate fields used directly by restored Session lifecycle logic without replaying the embedded stream. */
 function assertAssistantSettlementShape(
   data: Record<string, unknown> | undefined,
-  type: 'assistant/attempt' | 'assistant/message',
-  index: number,
+  subject: string,
 ): void {
   const turn = data?.['turn']
   const step = data?.['step']
   if (typeof turn !== 'number' || !Number.isSafeInteger(turn) || turn < 0 || Object.is(turn, -0)
     || typeof step !== 'number' || !Number.isSafeInteger(step) || step < 0 || Object.is(step, -0)
     || !Array.isArray(data?.['stream'])) {
-    throw new Error(`seed ${type} at index ${index} has invalid settlement fields`)
+    throw new Error(`${subject} has invalid settlement fields`)
   }
 }
 
@@ -749,6 +748,12 @@ export class Session {
       ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
     } as unknown as SessionEvent<T>)
     validateSessionEventData(event, `session event "${type}" at seq ${event.seq}`)
+    if (type === 'assistant/attempt' || type === 'assistant/message') {
+      const record = typeof dataSnapshot === 'object' && dataSnapshot !== null
+        ? dataSnapshot as Record<string, unknown>
+        : undefined
+      assertAssistantSettlementShape(record, `session event "${type}" at seq ${event.seq}`)
+    }
     this.surfaceManager.validateNext(event as SessionEvent)
 
     if (entry !== undefined) entry.appending = true

@@ -748,9 +748,9 @@ describe('SessionHistoryController', () => {
     const session = ctx.sessions.create(SessionId('pagination'), { meta: { cwd: '/workspace' } })
     session.append('turn/start', { turn: 1 })
     append(session, 'user/message', { content: [], source: { kind: 'user' } }, { surfaceOp: 'append' })
-    const firstReply = append(session, 'assistant/message', { turn: 1, step: 1, message: {} }, { surfaceOp: 'append' })
+    const firstReply = append(session, 'assistant/message', { turn: 1, step: 1, stream: [], message: {} }, { surfaceOp: 'append' })
     append(session, 'user/message', { content: [], source: { kind: 'user' } }, { surfaceOp: 'append' })
-    append(session, 'assistant/message', { turn: 1, step: 2, message: {} }, { surfaceOp: 'append' })
+    append(session, 'assistant/message', { turn: 1, step: 2, stream: [], message: {} }, { surfaceOp: 'append' })
     const summary = append(session, 'fixture/summary', {})
     const replacement = append(session, 'user/message', { content: [], source: { kind: 'plugin' } }, {
       surfaceOp: { op: 'replace', startSeq: SessionSeq(1), endSeq: SessionSeq(4) },
