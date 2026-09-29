@@ -1045,6 +1045,32 @@ describe('tool execution', () => {
     expect(result.content[0]).toEqual({ type: 'text', text: '(empty_tool returned no model-visible content)' })
   })
 
+  it('projects structuredContent as model-visible text when content is empty', async () => {
+    const client = createMockClient(
+      [{ name: 'structured_only', inputSchema: { type: 'object' } }],
+      { content: [], structuredContent: { rows: [{ id: 1, value: 'x' }] } },
+    )
+
+    await syncTools(client as never, ctx, defaultOpts, new Map())
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__srv__structured_only', arguments: {} })
+
+    expect(result.content[0]).toEqual({
+      type: 'text',
+      text: JSON.stringify({ rows: [{ id: 1, value: 'x' }] }, null, 2),
+    })
+  })
+
+  it('prefers content over structuredContent when both are present', async () => {
+    const client = createMockClient(
+      [{ name: 'both', inputSchema: { type: 'object' } }],
+      { content: [{ type: 'text', text: 'human summary' }], structuredContent: { raw: true } },
+    )
+
+    await syncTools(client as never, ctx, defaultOpts, new Map())
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__srv__both', arguments: {} })
+
+    expect(result.content[0]).toEqual({ type: 'text', text: 'human summary' })
+  })
 
   it('handles isError with non-text content (fallback error message)', async () => {
     const client = createMockClient(

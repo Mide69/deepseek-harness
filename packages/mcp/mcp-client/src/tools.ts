@@ -260,6 +260,9 @@ function createOutput(rawName: string, structuredSchema: JsonSchemaNode | undefi
     },
     render(_args: unknown, value: JsonValue) {
       const result = value as McpResult
+      if (result.content.length === 0 && result.structuredContent !== undefined) {
+        return [{ type: 'text', text: JSON.stringify(result.structuredContent, null, 2) }]
+      }
       return [{ type: 'text', text: extractText(result.content, rawName) }]
     },
   }
