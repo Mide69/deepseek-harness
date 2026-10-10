@@ -340,6 +340,29 @@ describe('steering from late extension points is never stranded', () => {
     expect(JSON.stringify(adapter.requests[1]!.messages)).toContain('one more thing')
   })
 
+  it('steer() queued as a microtask by the final turn/end runs in a second turn', async () => {
+    const adapter = new MockAdapter([textResponse('first turn'), textResponse('second turn')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('steer-at-turn-end'), { provider: 'mock', model: 'mock' })
+
+    let steeredOnce = false
+    ctx.on('session/event', (_session, event) => {
+      if (event.type !== 'turn/end' || steeredOnce) return
+      steeredOnce = true
+      // The turn has already found its inbox empty; this lands before the driver commits idle.
+      queueMicrotask(() => {
+        agent.steer(createUserMessage({ content: [{ type: 'text', text: 'late steer' }], source: { kind: 'user' } }))
+      })
+    })
+
+    send(agent, 'go')
+    await agent.whenIdle()
+
+    expect(adapter.requests).toHaveLength(2)
+    expect(JSON.stringify(adapter.requests[1]!.messages)).toContain('late steer')
+    expect(agent.inbox.nextStep).toHaveLength(0)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/end')).toHaveLength(2)
+  })
 })
 
 describe('plugin exceptions are contained', () => {
