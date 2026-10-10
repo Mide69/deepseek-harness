@@ -12,6 +12,8 @@ import { isAbsolute, join, parse, relative, resolve } from 'node:path'
 import { createServer } from 'node:net'
 import {
   applyLiteralEdit,
+  applyStagingMode,
+  ensureDirectory,
   listDirectory,
   probe,
   probeNoFollow,
@@ -933,6 +935,64 @@ describe('writeFileAtomic — temp-file safety', () => {
     await mkdir(sub)
     await expect(writeFileAtomic(sub, 'hi', undefined, undefined)).rejects.toBeInstanceOf(Error)
     expect((await readdir(dir)).filter(n => n.includes('.tmp'))).toEqual([])
+  })
+})
+
+describe('ensureDirectory', () => {
+  const errno = (code: string): Error => Object.assign(new Error(code), { code })
+
+  it('creates missing parents and accepts an existing directory', async () => {
+    const nested = join(dir, 'a', 'b')
+    await ensureDirectory(nested)
+    await ensureDirectory(nested)
+    expect((await stat(nested)).isDirectory()).toBe(true)
+  })
+
+  it.each(['EPERM', 'EACCES'])('accepts %s when the path is an existing directory', async (code) => {
+    const makeDirectory = vi.fn(async () => { throw errno(code) })
+    await expect(ensureDirectory(dir, makeDirectory)).resolves.toBeUndefined()
+    expect(makeDirectory).toHaveBeenCalledWith(dir)
+  })
+
+  it('rethrows EPERM when the path is a file', async () => {
+    const file = join(dir, 'file')
+    await writeFile(file, 'x')
+    const failure = errno('EPERM')
+    await expect(ensureDirectory(file, async () => { throw failure })).rejects.toBe(failure)
+  })
+
+  it('rethrows EPERM when the path cannot be observed', async () => {
+    const failure = errno('EPERM')
+    await expect(ensureDirectory(join(dir, 'missing'), async () => { throw failure })).rejects.toBe(failure)
+  })
+
+  it('rethrows failures other than EPERM and EACCES without probing the path', async () => {
+    const failure = errno('ENOSPC')
+    await expect(ensureDirectory(dir, async () => { throw failure })).rejects.toBe(failure)
+  })
+})
+
+describe('applyStagingMode', () => {
+  const errno = (code: string): Error => Object.assign(new Error(code), { code })
+
+  it('runs the mode change', async () => {
+    const applyMode = vi.fn(async () => undefined)
+    await applyStagingMode('linux', applyMode)
+    expect(applyMode).toHaveBeenCalledOnce()
+  })
+
+  it('tolerates EINVAL on win32', async () => {
+    await expect(applyStagingMode('win32', async () => { throw errno('EINVAL') })).resolves.toBeUndefined()
+  })
+
+  it('keeps EINVAL fatal on POSIX', async () => {
+    const failure = errno('EINVAL')
+    await expect(applyStagingMode('linux', async () => { throw failure })).rejects.toBe(failure)
+  })
+
+  it('keeps other failures fatal on win32', async () => {
+    const failure = errno('EPERM')
+    await expect(applyStagingMode('win32', async () => { throw failure })).rejects.toBe(failure)
   })
 })
 

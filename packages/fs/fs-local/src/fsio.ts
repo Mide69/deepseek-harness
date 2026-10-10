@@ -37,8 +37,61 @@ function isENOTDIR(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOTDIR'
 }
 
+function hasErrorCode(error: unknown, ...codes: string[]): boolean {
+  return error instanceof Error && 'code' in error && typeof error.code === 'string' && codes.includes(error.code)
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
+}
+
+/**
+ * Create a directory and its missing parents, accepting a directory that already exists.
+ * Node reports an existing directory as success only when the filesystem answers `EEXIST`.
+ * SFTP has no such status, so SFTP-backed mounts (sshfs) answer `EPERM`, and some network
+ * filesystems answer `EACCES`. Those two failures are accepted only after `stat` confirms the
+ * path is a directory; any other failure, or a non-directory, rethrows the original error.
+ * @param directory - absolute directory to ensure.
+ * @param makeDirectory - recursive directory creation; defaults to `fs.mkdir` with `recursive`.
+ */
+export async function ensureDirectory(
+  directory: string,
+  makeDirectory: (path: string) => Promise<unknown> = path => mkdir(path, { recursive: true }),
+): Promise<void> {
+  try {
+    await makeDirectory(directory)
+    return
+  } catch (error: unknown) {
+    if (!hasErrorCode(error, 'EPERM', 'EACCES')) throw error
+    let existing: Stats
+    try {
+      existing = await stat(directory)
+    } catch (_statFailure) {
+      // The path is not observable, so the original creation failure is the accurate report.
+      throw error
+    }
+    if (!existing.isDirectory()) throw error
+  }
+}
+
+/**
+ * Apply a staging-file mode, tolerating `EINVAL` on Windows only.
+ * A mode is inert on Windows (its security comes from the DACL), and a mounted network
+ * filesystem can reject the mode request itself with `EINVAL`. POSIX keeps every failure fatal
+ * because the mode is the staging privacy guarantee there.
+ * @param platform - platform the write targets.
+ * @param applyMode - performs the `chmod` or `fchmod`.
+ */
+export async function applyStagingMode(
+  platform: NodeJS.Platform,
+  applyMode: () => Promise<void>,
+): Promise<void> {
+  try {
+    await applyMode()
+  } catch (error: unknown) {
+    if (platform === 'win32' && hasErrorCode(error, 'EINVAL')) return
+    throw error
+  }
 }
 
 /* v8 ignore start -- composes secondary cleanup-failure messages, which require a filesystem/kernel fault after the primary failure. */
@@ -595,7 +648,7 @@ export async function writeFileAtomic(
 ): Promise<void> {
   throwIfAborted(signal, 'write')
   const directory = dirname(absolutePath)
-  await mkdir(directory, { recursive: true })
+  await ensureDirectory(directory)
 
   throwIfAborted(signal, 'write')
   const stagingDirName = internals.tempDirName?.(absolutePath) ?? `.${basename(absolutePath)}.${process.pid}.${randomUUID()}.tmpdir`
@@ -615,17 +668,18 @@ export async function writeFileAtomic(
   try {
     await mkdir(stagingDir, { mode: 0o700 })
     stagingCreated = true
-    await chmod(stagingDir, 0o700)
+    await applyStagingMode(platform, () => chmod(stagingDir, 0o700))
 
     handle = await open(tempPath, 'wx', 0o600)
-    await handle.chmod(0o600)
+    const stagedHandle = handle
+    await applyStagingMode(platform, () => stagedHandle.chmod(0o600))
     if (platform === 'win32' && mode !== undefined) {
       await copyFileDacl(absolutePath, tempPath)
     }
     await handle.writeFile(content, { encoding: 'utf8', ...signal ? { signal } : {} })
     await handle.sync()
     await internals.inspectTemp?.({ stagingDir, tempPath })
-    if (mode !== undefined) await handle.chmod(mode)
+    if (mode !== undefined) await applyStagingMode(platform, () => stagedHandle.chmod(mode))
     await handle.close()
     handle = undefined
 
