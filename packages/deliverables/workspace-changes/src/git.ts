@@ -9,6 +9,12 @@ import { canonicalPath, isInside, toPosix } from './paths.ts'
 const TERMINATE_GRACE_MS = 2_000
 /** Retained stderr tail for diagnostics. */
 const STDERR_TAIL_BYTES = 16 * 1024
+/**
+ * Repository configuration the runner overrides on every command. A repository's own
+ * `core.hooksPath` and `core.fsmonitor` run programs on index-writing commands such as
+ * `add` and `write-tree`, and the harness runs those for its own snapshots, not at a user's request.
+ */
+const SNAPSHOT_GIT_CONFIG = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false'] as const
 
 /** Settled git command facts; a nonzero exit is a result, not an exception. */
 export interface GitRunResult {
@@ -56,7 +62,7 @@ export class GitRunner {
     const timeout = AbortSignal.timeout(this.limits.timeoutMs)
     const signal = AbortSignal.any([options.signal, timeout])
     const handle = this.subprocess.spawn({
-      argv: [this.executable, ...args],
+      argv: [this.executable, ...SNAPSHOT_GIT_CONFIG, ...args],
       cwd: options.cwd,
       stdio: {
         stdin: options.stdin === undefined ? 'ignore' : { data: options.stdin },

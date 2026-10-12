@@ -1,5 +1,5 @@
 /** Git command bounds, snapshot recovery, and diff failure reporting. */
-import { chmod, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -44,6 +44,32 @@ describe('GitRunner', () => {
       vi.unstubAllEnvs()
     }
   })
+
+  it('does not run repository-configured hooks or fsmonitor programs', async () => {
+    const cwd = await scratchDir('dsh-git-hooks-', cleanups)
+    const markers = await scratchDir('dsh-git-markers-', cleanups)
+    const posix = (path: string): string => path.replaceAll('\\', '/')
+    git(cwd, 'init', '-q', '-b', 'main')
+    await mkdir(join(cwd, '.hooks'))
+    await writeFile(join(cwd, '.hooks', 'post-index-change'), `#!/bin/sh\necho ran > '${posix(join(markers, 'hook'))}'\n`)
+    await chmod(join(cwd, '.hooks', 'post-index-change'), 0o755)
+    await writeFile(join(cwd, 'fsmonitor.sh'), `#!/bin/sh\necho ran > '${posix(join(markers, 'fsmonitor'))}'\nexit 1\n`)
+    git(cwd, 'config', 'core.hooksPath', '.hooks')
+    git(cwd, 'config', 'core.fsmonitor', `sh '${posix(join(cwd, 'fsmonitor.sh'))}'`)
+    await writeFile(join(cwd, 'a.txt'), 'a\n')
+
+    // Control: an unguarded git run fires both programs, so the absence below is meaningful.
+    git(cwd, 'add', '--all')
+    expect((await readdir(markers)).sort()).toEqual(['fsmonitor', 'hook'])
+    for (const marker of await readdir(markers)) await rm(join(markers, marker))
+    git(cwd, 'reset', '-q')
+    for (const marker of await readdir(markers)) await rm(join(markers, marker))
+
+    const { git: command } = await runner()
+    const workspace = await locateGitWorkspace(command, cwd, objectsIn(await scratchDir('dsh-git-store-', cleanups)), signal)
+    await snapshotTree(command, workspace!, signal)
+    expect(await readdir(markers)).toEqual([])
+  }, 30_000)
 
   it('reports timeouts and external aborts as failures', async () => {
     const cwd = await scratchDir('dsh-git-runner-', cleanups)
